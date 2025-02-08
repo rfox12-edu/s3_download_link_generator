@@ -32,7 +32,7 @@ def get_download_password() -> str:
     Retrieve the login password from AWS Secrets Manager.
     The secret name is AMAZON_DOWNLOAD_PASSWORD.
     """
-    return get_secret_value("AMAZON_DOWNLOAD_PASSWORD")
+    return json.loads(get_secret_value("AMAZON_DOWNLOAD_PASSWORD")).get("AMAZON_DOWNLOAD_PASSWORD")
 
 # Load the login password secret on startup.
 DOWNLOAD_PASSWORD = get_download_password()
