@@ -1,4 +1,5 @@
 import os
+import json
 import boto3
 from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, session, redirect, url_for, flash
@@ -36,23 +37,44 @@ def get_download_password() -> str:
 # Load the login password secret on startup.
 DOWNLOAD_PASSWORD = get_download_password()
 
+def get_s3_reader_credentials():
+    """
+    Retrieve the s3_reader credentials from AWS Secrets Manager.
+    The secret name is S3_READER_CREDENTIALS and is expected to be a JSON string
+    containing the keys "S3_READER_ACCESS_KEY" and "S3_READER_SECRET_KEY".
+    
+    :return: A dictionary with the credentials, or None if retrieval fails.
+    """
+    secret_name = "S3_READER_CREDENTIALS"
+    secret_string = get_secret_value(secret_name)
+    if not secret_string:
+        app.logger.error(f"Could not retrieve secret string for '{secret_name}'.")
+        return None
+    try:
+        credentials = json.loads(secret_string)
+    except Exception as e:
+        app.logger.error(f"Error parsing JSON for secret '{secret_name}': {e}")
+        return None
+    return credentials
+
 def generate_presigned_url_for_object(bucket: str, key: str, expiration: int):
     """
-    Generate a presigned URL for an S3 object using the credentials for the s3_reader IAM user.
-    The credentials are retrieved as separate secrets from AWS Secrets Manager:
-      - S3_READER_ACCESS_KEY
-      - S3_READER_SECRET_KEY
-
+    Generate a presigned URL for an S3 object using the s3_reader credentials.
+    
     :param bucket: Name of the S3 bucket.
     :param key: S3 object key.
     :param expiration: Expiration time in seconds.
     :return: Tuple of (presigned URL, expiration datetime)
     """
-    access_key = get_secret_value("S3_READER_ACCESS_KEY")
-    secret_key = get_secret_value("S3_READER_SECRET_KEY")
+    credentials = get_s3_reader_credentials()
+    if not credentials:
+        raise ValueError("S3 reader credentials could not be retrieved.")
+    
+    access_key = credentials.get("S3_READER_ACCESS_KEY")
+    secret_key = credentials.get("S3_READER_SECRET_KEY")
     
     if not access_key or not secret_key:
-        raise ValueError("Missing s3 reader access key or secret key from Secrets Manager.")
+        raise ValueError("Missing S3 reader access key or secret key in JSON credentials.")
 
     # Create a boto3 session using the s3_reader user's credentials.
     session_with_user = boto3.Session(
