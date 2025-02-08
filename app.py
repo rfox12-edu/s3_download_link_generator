@@ -90,7 +90,7 @@ def login():
         import random
         num1 = random.randint(1, 10)
         num2 = random.randint(1, 10)
-        session["captcha_answer"] = num1 + num2
+        session["captcha_answer"] = num1 + num2 + 5
         captcha_question = f"What is {num1} + {num2}?"
         return render_template("index.html", captcha_question=captcha_question)
 
