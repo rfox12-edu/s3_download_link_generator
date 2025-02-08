@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Hello World</title>
+</head>
+<body>
+    <h1>Hello, World!</h1>
+    {% if presigned_url and expiration_datetime %}
+      <p>Here is your presigned S3 URL:</p>
+      <p><a href="{{ presigned_url }}">{{ presigned_url }}</a></p>
+      <p>Expires at: {{ expiration_datetime }}</p>
+    {% else %}
+      <p>Error generating presigned URL.</p>
+    {% endif %}
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+</head>
+<body>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul style="color: red;">
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <h1>Please Log In</h1>
+    <form method="POST">
+        <div>
+            <label for="password">Password:</label>
+            <input type="password" name="password" id="password" required>
+        </div>
+        <br>
+        <div>
+            <label for="captcha">Captcha: {{ captcha_question }}</label>
+            <input type="text" name="captcha" id="captcha" required>
+        </div>
+        <br>
+        <button type="submit">Submit</button>
+    </form>
+</body>
+</html>
