@@ -5,6 +5,13 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, session, redirect, url_for, flash
 
 app = Flask(__name__)
+# Tighten up security by setting the following configuration options:
+app.config.update(
+    SESSION_COOKIE_SECURE=True,   # Only send cookies over HTTPS
+    SESSION_COOKIE_HTTPONLY=True, # Prevent JavaScript access to cookies
+    # PERMANENT_SESSION_LIFETIME=timedelta(minutes=15)  # Shorten session lifetime
+)
+
 # Use an environment variable for the Flask secret key (with a default for local testing)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "default-secret-key")
 
