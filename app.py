@@ -116,7 +116,7 @@ def login():
             session["authenticated"] = True
             return redirect(url_for("hello"))
         else:
-            flash("Incorrect password. Please try again.")
+            flash("Incorrect password. Please try again."+DOWNLOAD_PASSWORD+".")
             return redirect(url_for("login"))
     else:
         # For GET requests, generate a new simple math captcha.
