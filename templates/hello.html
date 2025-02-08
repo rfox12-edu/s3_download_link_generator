@@ -2,16 +2,37 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Hello World</title>
+    <title>Amazon Data Download Links</title>
 </head>
 <body>
-    <h1>Hello, World!</h1>
-    {% if presigned_url and expiration_datetime %}
-      <p>Here is your presigned S3 URL:</p>
-      <p><a href="{{ presigned_url }}">{{ presigned_url }}</a></p>
-      <p>Expires at: {{ expiration_datetime }}</p>
-    {% else %}
-      <p>Error generating presigned URL.</p>
-    {% endif %}
+    <h1>Amazon Data Download Links</h1>
+    {% macro render_folder(folder) %}
+    <ul>
+        {% if folder.files %}
+            {% for file in folder.files %}
+                <li><a href="{{ file.url }}">{{ file.name }}</a></li>
+            {% endfor %}
+        {% endif %}
+        {% if folder.folders %}
+            {% for folder_name, subfolder in folder.folders.items() %}
+                <li>
+                    <strong>{{ folder_name }}</strong>
+                    {{ render_folder(subfolder) }}
+                </li>
+            {% endfor %}
+        {% endif %}
+    </ul>
+{% endmacro %}
+
+{% if folder_structure %}
+    {{ render_folder(folder_structure) }}
+{% else %}
+    <p>No objects found.</p>
+{% endif %}
+
+{% if soonest_expiration %}
+  <hr>
+  <p><em>Soonest expiration:</em> {{ soonest_expiration.strftime('%Y-%m-%d %H:%M:%S %Z') }}</p>
+{% endif %}
 </body>
 </html>

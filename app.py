@@ -57,39 +57,6 @@ def get_s3_reader_credentials():
         return None
     return credentials
 
-def generate_presigned_url_for_object(bucket: str, key: str, expiration: int):
-    """
-    Generate a presigned URL for an S3 object using the s3_reader credentials.
-    
-    :param bucket: Name of the S3 bucket.
-    :param key: S3 object key.
-    :param expiration: Expiration time in seconds.
-    :return: Tuple of (presigned URL, expiration datetime)
-    """
-    credentials = get_s3_reader_credentials()
-    if not credentials:
-        raise ValueError("S3 reader credentials could not be retrieved.")
-    
-    access_key = credentials.get("S3_READER_ACCESS_KEY")
-    secret_key = credentials.get("S3_READER_SECRET_KEY")
-    
-    if not access_key or not secret_key:
-        raise ValueError("Missing S3 reader access key or secret key in JSON credentials.")
-
-    # Create a boto3 session using the s3_reader user's credentials.
-    session_with_user = boto3.Session(
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key
-    )
-    s3_client = session_with_user.client("s3")
-    presigned_url = s3_client.generate_presigned_url(
-        ClientMethod="get_object",
-        Params={"Bucket": bucket, "Key": key},
-        ExpiresIn=expiration
-    )
-    expiration_datetime = datetime.now(timezone.utc) + timedelta(seconds=expiration)
-    return presigned_url, expiration_datetime
-
 @app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -116,7 +83,7 @@ def login():
             session["authenticated"] = True
             return redirect(url_for("hello"))
         else:
-            flash("Incorrect password. Please try again."+DOWNLOAD_PASSWORD+".")
+            flash("Incorrect password. Please try again.")
             return redirect(url_for("login"))
     else:
         # For GET requests, generate a new simple math captcha.
@@ -133,19 +100,81 @@ def hello():
     if not session.get("authenticated"):
         return redirect(url_for("login"))
     
-    # Define the S3 object.
+    # Define the S3 bucket, prefix and expiration (7 days)
     bucket = "6190-amazon-data"
-    key = "2023/products/meta_Amazon_Fashion.jsonl.gz"
+    prefix = "2023/"
     expiration_seconds = 604800  # 7 days in seconds
 
-    try:
-        presigned_url, expiration_dt = generate_presigned_url_for_object(bucket, key, expiration_seconds)
-    except Exception as e:
-        flash(f"Error generating presigned URL: {e}")
-        presigned_url = None
-        expiration_dt = None
+    # Retrieve the s3_reader credentials and create a session
+    credentials = get_s3_reader_credentials()
+    if not credentials:
+        flash("Error retrieving s3_reader credentials.")
+        return render_template("hello.html", folder_structure=None, soonest_expiration=None)
+    access_key = credentials.get("S3_READER_ACCESS_KEY")
+    secret_key = credentials.get("S3_READER_SECRET_KEY")
+    if not access_key or not secret_key:
+        flash("Missing s3_reader credentials in secret.")
+        return render_template("hello.html", folder_structure=None, soonest_expiration=None)
+    session_with_user = boto3.Session(
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key
+    )
+    s3_client = session_with_user.client("s3")
 
-    return render_template("hello.html", presigned_url=presigned_url, expiration_datetime=expiration_dt)
+    # List all objects recursively under the given prefix.
+    objects = []
+    paginator = s3_client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        if "Contents" in page:
+            for obj in page["Contents"]:
+                key = obj["Key"]
+                # Optionally skip “folder” keys (which end with a '/')
+                if key.endswith("/"):
+                    continue
+                objects.append(key)
+
+    # For each object, generate a presigned URL and record its expiration time.
+    signed_objects = []
+    expiration_dates = []
+    for key in objects:
+        url = s3_client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=expiration_seconds
+        )
+        # Each presigned URL's expiration is computed as current time plus expiration_seconds.
+        # (Because the generation calls occur sequentially, these may differ slightly.)
+        expiration_dt = datetime.now(timezone.utc) + timedelta(seconds=expiration_seconds)
+        signed_objects.append({"key": key, "url": url})
+        expiration_dates.append(expiration_dt)
+
+    # Compute the soonest (i.e. earliest) expiration date among all objects.
+    soonest_expiration = min(expiration_dates) if expiration_dates else None
+
+    # Build a nested folder structure from the keys.
+    folder_structure = {}
+    for obj in signed_objects:
+        # Remove the prefix (if you want to display a cleaner structure)
+        relative_key = obj["key"][len(prefix):] if obj["key"].startswith(prefix) else obj["key"]
+        parts = relative_key.split("/")
+        current = folder_structure
+        for i, part in enumerate(parts):
+            if part == "":
+                continue
+            if i == len(parts) - 1:
+                # This is a file.
+                if "files" not in current:
+                    current["files"] = []
+                current["files"].append({"name": part, "url": obj["url"]})
+            else:
+                # This is a folder.
+                if "folders" not in current:
+                    current["folders"] = {}
+                if part not in current["folders"]:
+                    current["folders"][part] = {}
+                current = current["folders"][part]
+
+    return render_template("hello.html", folder_structure=folder_structure, soonest_expiration=soonest_expiration)
 
 if __name__ == "__main__":
     # Run on 0.0.0.0:8080 for App Runner compatibility.
