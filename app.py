@@ -8,6 +8,17 @@ app = Flask(__name__)
 # Use an environment variable for the Flask secret key (with a default for local testing)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "default-secret-key")
 
+def human_readable_size(num, decimal_places=1):
+    """
+    Convert a file size in bytes into a human-readable string.
+    For example, 45321234 becomes '43.2 MB'.
+    """
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB', 'PB']:
+        if num < 1024.0:
+            return f"{num:.{decimal_places}f} {unit}"
+        num /= 1024.0
+    return f"{num:.{decimal_places}f} PB"
+
 def get_secret_value(secret_name: str) -> str:
     """
     Retrieve a secret value from AWS Secrets Manager.
@@ -30,9 +41,21 @@ def get_secret_value(secret_name: str) -> str:
 def get_download_password() -> str:
     """
     Retrieve the login password from AWS Secrets Manager.
-    The secret name is AMAZON_DOWNLOAD_PASSWORD.
+    The secret is expected to be stored as a JSON string containing the key "AMAZON_DOWNLOAD_PASSWORD".
+    For example:
+      {
+         "AMAZON_DOWNLOAD_PASSWORD": "your_password_here"
+      }
     """
-    return json.loads(get_secret_value("AMAZON_DOWNLOAD_PASSWORD")).get("AMAZON_DOWNLOAD_PASSWORD")
+    secret_value = get_secret_value("AMAZON_DOWNLOAD_PASSWORD")
+    if not secret_value:
+        return None
+    try:
+        # Parse the JSON and get the actual password.
+        return json.loads(secret_value).get("AMAZON_DOWNLOAD_PASSWORD")
+    except Exception as e:
+        app.logger.error(f"Error parsing the AMAZON_DOWNLOAD_PASSWORD secret: {e}")
+        return None
 
 # Load the login password secret on startup.
 DOWNLOAD_PASSWORD = get_download_password()
@@ -105,7 +128,7 @@ def hello():
     prefix = "2023/"
     expiration_seconds = 604800  # 7 days in seconds
 
-    # Retrieve the s3_reader credentials and create a session
+    # Retrieve the s3_reader credentials and create a session.
     credentials = get_s3_reader_credentials()
     if not credentials:
         flash("Error retrieving s3_reader credentials.")
@@ -128,24 +151,30 @@ def hello():
         if "Contents" in page:
             for obj in page["Contents"]:
                 key = obj["Key"]
-                # Optionally skip “folder” keys (which end with a '/')
+                # Skip "folder" markers (keys ending with '/')
                 if key.endswith("/"):
                     continue
-                objects.append(key)
+                size = obj.get("Size", 0)
+                objects.append({"Key": key, "Size": size})
 
     # For each object, generate a presigned URL and record its expiration time.
     signed_objects = []
     expiration_dates = []
-    for key in objects:
+    for file_obj in objects:
+        key = file_obj["Key"]
+        size_bytes = file_obj["Size"]
         url = s3_client.generate_presigned_url(
             ClientMethod="get_object",
             Params={"Bucket": bucket, "Key": key},
             ExpiresIn=expiration_seconds
         )
-        # Each presigned URL's expiration is computed as current time plus expiration_seconds.
-        # (Because the generation calls occur sequentially, these may differ slightly.)
+        # Compute expiration as current time plus expiration_seconds.
         expiration_dt = datetime.now(timezone.utc) + timedelta(seconds=expiration_seconds)
-        signed_objects.append({"key": key, "url": url})
+        signed_objects.append({
+            "key": key,
+            "url": url,
+            "size": human_readable_size(size_bytes)
+        })
         expiration_dates.append(expiration_dt)
 
     # Compute the soonest (i.e. earliest) expiration date among all objects.
@@ -154,7 +183,7 @@ def hello():
     # Build a nested folder structure from the keys.
     folder_structure = {}
     for obj in signed_objects:
-        # Remove the prefix (if you want to display a cleaner structure)
+        # Remove the prefix for a cleaner display
         relative_key = obj["key"][len(prefix):] if obj["key"].startswith(prefix) else obj["key"]
         parts = relative_key.split("/")
         current = folder_structure
@@ -162,10 +191,14 @@ def hello():
             if part == "":
                 continue
             if i == len(parts) - 1:
-                # This is a file.
+                # This is a file. Include the file name, URL, and size.
                 if "files" not in current:
                     current["files"] = []
-                current["files"].append({"name": part, "url": obj["url"]})
+                current["files"].append({
+                    "name": part,
+                    "url": obj["url"],
+                    "size": obj["size"]
+                })
             else:
                 # This is a folder.
                 if "folders" not in current:

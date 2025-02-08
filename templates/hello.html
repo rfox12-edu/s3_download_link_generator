@@ -6,33 +6,37 @@
 </head>
 <body>
     <h1>Amazon Data Download Links</h1>
+    
     {% macro render_folder(folder) %}
-    <ul>
-        {% if folder.files %}
-            {% for file in folder.files %}
-                <li><a href="{{ file.url }}">{{ file.name }}</a></li>
-            {% endfor %}
-        {% endif %}
-        {% if folder.folders %}
-            {% for folder_name, subfolder in folder.folders.items() %}
-                <li>
-                    <strong>{{ folder_name }}</strong>
-                    {{ render_folder(subfolder) }}
-                </li>
-            {% endfor %}
-        {% endif %}
-    </ul>
-{% endmacro %}
-
-{% if folder_structure %}
-    {{ render_folder(folder_structure) }}
-{% else %}
-    <p>No objects found.</p>
-{% endif %}
-
-{% if soonest_expiration %}
-  <hr>
-  <p><em>Soonest expiration:</em> {{ soonest_expiration.strftime('%Y-%m-%d %H:%M:%S %Z') }}</p>
-{% endif %}
+        <ul>
+            {% if folder.files %}
+                {% for file in folder.files %}
+                    <li>
+                        <a href="{{ file.url }}">{{ file.name }}</a>
+                        ({{ file.size }})
+                    </li>
+                {% endfor %}
+            {% endif %}
+            {% if folder.folders %}
+                {% for folder_name, subfolder in folder.folders.items() %}
+                    <li>
+                        <strong>{{ folder_name }}</strong>
+                        {{ render_folder(subfolder) }}
+                    </li>
+                {% endfor %}
+            {% endif %}
+        </ul>
+    {% endmacro %}
+    
+    {% if folder_structure %}
+        {{ render_folder(folder_structure) }}
+    {% else %}
+        <p>No objects found.</p>
+    {% endif %}
+    
+    {% if soonest_expiration %}
+      <hr>
+      <p><em>Soonest expiration:</em> {{ soonest_expiration.strftime('%Y-%m-%d %H:%M:%S %Z') }}</p>
+    {% endif %}
 </body>
 </html>
